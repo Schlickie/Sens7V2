@@ -1,11 +1,8 @@
-// src/app/senslab/senslab-session-detail.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { SenslabStorageService } from './senslab-storage.service';
-
-import type { SenslabSession } from './models/senslab-session.model';
-import type { SenslabSample } from './models/senslab-sample.model';
+import type { SenslabResponse } from './models/senslab-response.model';
 
 @Component({
   selector: 'app-senslab-session-detail',
@@ -36,7 +33,7 @@ import type { SenslabSample } from './models/senslab-sample.model';
         Panel URL: <a [href]="inviteUrl">{{ inviteUrl }}</a>
       </div>
       <div class="muted" style="margin-top:6px">
-        Token enthält keine Seat-Nummer; Panelist folgt dem gleichen Join-Flow wie manuell.
+        Token ist one-time; enthält keine Seat-Nummer; Join-Flow bleibt identisch zur manuellen Eingabe.
       </div>
     </div>
 
@@ -47,14 +44,39 @@ import type { SenslabSample } from './models/senslab-sample.model';
       </div>
 
       <div class="samples">
-        <a class="srow" *ngFor="let smp of samples"
-           [routerLink]="['/senslab','sessions', session.id, 'samples', smp.id]">
-          <div class="stitle">{{ smp.label }}</div>
-          <div class="smeta">
-            Method: <b>{{ smp.methodCore.method }}</b>
-            · Updated: {{ smp.updatedAt }}
+        <div class="srow" *ngFor="let smp of samples">
+          <a class="slink"
+             [routerLink]="['/senslab/sessions', session.id, 'samples', smp.id]">
+            <div class="stitle">{{ smp.label }}</div>
+            <div class="smeta">
+              Method: <b>{{ smp.methodCore.method }}</b>
+              · Updated: {{ smp.updatedAt }}
+            </div>
+          </a>
+
+          <div class="resp">
+            <div class="respHead">
+              Responses: <b>{{ (responsesBySampleId[smp.id] || []).length }}</b>
+            </div>
+
+            <div *ngIf="(responsesBySampleId[smp.id] || []).length === 0" class="muted">
+              No responses yet.
+            </div>
+
+            <div class="respList" *ngIf="(responsesBySampleId[smp.id] || []).length > 0">
+              <div class="respRow" *ngFor="let r of responsesBySampleId[smp.id]">
+                <div class="rMain">
+                  <b>{{ r.panelistName || r.panelistId }}</b>
+                  <span class="muted">({{ r.panelistId }})</span>
+                </div>
+                <div class="rMeta muted">
+                  {{ r.submittedAt }}
+                </div>
+              </div>
+            </div>
+
           </div>
-        </a>
+        </div>
       </div>
     </div>
 
@@ -69,16 +91,27 @@ import type { SenslabSample } from './models/senslab-sample.model';
     .muted{ opacity:.7; font-size:13px; }
     .rowline{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
     .samples{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
-    .srow{ display:block; padding:10px; border:1px solid #eee; border-radius:12px; text-decoration:none; color:inherit; }
+
+    .srow{ border:1px solid #eee; border-radius:12px; overflow:hidden; }
+    .slink{ display:block; padding:10px; text-decoration:none; color:inherit; }
     .stitle{ font-weight:700; }
     .smeta{ opacity:.75; font-size:13px; margin-top:4px; }
+
+    .resp{ border-top:1px solid #eee; padding:10px; background:#fafafa; }
+    .respHead{ font-size:13px; margin-bottom:6px; }
+    .respList{ display:flex; flex-direction:column; gap:6px; }
+    .respRow{ display:flex; justify-content:space-between; gap:10px; padding:8px; background:#fff; border:1px solid #eee; border-radius:10px; }
+    .rMain{ font-size:13px; }
+    .rMeta{ font-size:12px; }
   `]
 })
 export class SenslabSessionDetailComponent implements OnInit {
   sessionId = '';
-  session: SenslabSession | null = null;
-  samples: SenslabSample[] = [];
+  session: any = null;
+  samples: any[] = [];
   inviteUrl: string | null = null;
+
+  responsesBySampleId: Record<string, SenslabResponse[]> = {};
 
   constructor(
     private route: ActivatedRoute,
@@ -87,17 +120,26 @@ export class SenslabSessionDetailComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // supports both route param names ('id' or legacy 'sessionId')
-    this.sessionId =
-      this.route.snapshot.paramMap.get('id') ||
-      this.route.snapshot.paramMap.get('sessionId') ||
-      '';
+    this.sessionId = this.route.snapshot.paramMap.get('sessionId') || '';
     this.reload();
   }
 
   reload(): void {
     this.session = this.store.getSessionById(this.sessionId);
     this.samples = this.store.getSamplesForSession(this.sessionId);
+
+    const all = this.store.getResponsesForSession(this.sessionId);
+    const map: Record<string, SenslabResponse[]> = {};
+    for (const r of all) {
+      (map[r.sampleId] ||= []).push(r);
+    }
+
+    // newest first per sample
+    for (const sid of Object.keys(map)) {
+      map[sid] = [...map[sid]].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+    }
+
+    this.responsesBySampleId = map;
   }
 
   setStatus(status: 'draft'|'ready'|'closed'): void {
@@ -107,7 +149,7 @@ export class SenslabSessionDetailComponent implements OnInit {
 
   addProfile(): void {
     const smp = this.store.createProfileSample(this.sessionId, 'Product Profile');
-    this.router.navigate(['/senslab','sessions', this.sessionId, 'samples', smp.id]);
+    this.router.navigate(['/senslab/sessions', this.sessionId, 'samples', smp.id]);
   }
 
   createToken(): void {

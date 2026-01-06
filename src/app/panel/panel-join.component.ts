@@ -58,18 +58,20 @@ export class PanelJoinComponent implements OnInit {
 
   ngOnInit(): void {
     this.token = this.route.snapshot.queryParamMap.get('token');
+
     if (this.token) {
       const t = this.store.resolveToken(this.token);
       if (!t) {
-        this.hint = 'Invalid token.';
+        this.hint = 'Invalid or already used token.';
         return;
       }
-      // token -> sessionId -> sessionCode auto-fill
+
       const s = this.store.getSessionById(t.sessionId);
       if (!s) {
         this.hint = 'Token session not found.';
         return;
       }
+
       this.sessionCode = s.sessionCode;
       this.hint = 'Token recognized. Please enter your panelist ID and join.';
     }
@@ -83,18 +85,32 @@ export class PanelJoinComponent implements OnInit {
       return;
     }
 
-    const session = this.store.getSessions().find(s => s.sessionCode === code) || null;
+    const session = this.store.getSessionByCode(code);
     if (!session) {
       this.hint = 'Session code not found.';
       return;
     }
 
-    if (this.token) this.store.markTokenUsed(this.token);
+    // if token was used to get here: validate again, then mark used after successful join
+    if (this.token) {
+      const t = this.store.resolveToken(this.token);
+      if (!t) {
+        this.hint = 'Token is invalid or already used.';
+        return;
+      }
+      this.store.markTokenUsed(this.token);
+    }
 
-    // v1: Panelist-Daten hängen wir an navigation state (kein eigenes User-System)
+    const display = (this.panelistName || '').trim() || pid;
+
+    // Persist panelist info to survive reloads
+    try {
+      sessionStorage.setItem(`senslab_panelist_${session.id}`, JSON.stringify({ panelistId: pid, panelistName: display }));
+    } catch {}
+
     this.router.navigate(
       ['/panel/session', session.id],
-      { state: { panelistId: pid, panelistName: (this.panelistName || '').trim() || pid } }
+      { state: { panelistId: pid, panelistName: display } }
     );
   }
 }

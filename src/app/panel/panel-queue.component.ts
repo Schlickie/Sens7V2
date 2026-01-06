@@ -61,10 +61,28 @@ export class PanelQueueComponent implements OnInit {
 
   ngOnInit(): void {
     this.sessionId = this.route.snapshot.paramMap.get('sessionId') || '';
+    this.session = this.store.getSessionById(this.sessionId);
+
+    // read from navigation state first
     const nav = this.router.getCurrentNavigation();
     const st: any = nav?.extras?.state || history.state || {};
     this.panelistId = st.panelistId || '';
     this.panelistName = st.panelistName || '';
+
+    // fallback to sessionStorage (survive reload)
+    if (!this.panelistId) {
+      try {
+        const raw = sessionStorage.getItem(`senslab_panelist_${this.sessionId}`);
+        const p = raw ? JSON.parse(raw) : null;
+        this.panelistId = p?.panelistId || '';
+        this.panelistName = p?.panelistName || '';
+      } catch {}
+    }
+
+    if (!this.panelistId) {
+      this.router.navigate(['/panel']);
+      return;
+    }
 
     this.reload();
   }

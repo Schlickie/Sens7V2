@@ -1,4 +1,3 @@
-// src/app/senslab/senslab-storage.service.ts
 import { Injectable } from '@angular/core';
 import { safeParse } from '../shared/storage.util';
 import { makeId, makeShortCode, makeToken, nowIso } from '../shared/id.util';
@@ -16,6 +15,7 @@ const LS_TOKENS = 'senslab_inviteTokens';
 
 @Injectable({ providedIn: 'root' })
 export class SenslabStorageService {
+
   // ───────────────── Sessions ─────────────────
   getSessions(): SenslabSession[] {
     return safeParse<SenslabSession[]>(localStorage.getItem(LS_SESSIONS), []);
@@ -23,6 +23,12 @@ export class SenslabStorageService {
 
   getSessionById(id: string): SenslabSession | null {
     return this.getSessions().find(s => s.id === id) || null;
+  }
+
+  getSessionByCode(sessionCode: string): SenslabSession | null {
+    const code = (sessionCode || '').trim().toUpperCase();
+    if (!code) return null;
+    return this.getSessions().find(s => (s.sessionCode || '').toUpperCase() === code) || null;
   }
 
   upsertSession(session: SenslabSession): void {
@@ -67,18 +73,8 @@ export class SenslabStorageService {
     return this.getSamples().find(x => x.id === id) || null;
   }
 
-  /** returns samples in the SAME order as ids[] */
-  getSamplesByIds(ids: string[]): SenslabSample[] {
-    const all = this.getSamples();
-    const byId = new Map(all.map(s => [s.id, s] as const));
-    return (ids || []).map(id => byId.get(id)).filter(Boolean) as SenslabSample[];
-  }
-
-  /** source of truth: session.sampleIds (order + membership) */
   getSamplesForSession(sessionId: string): SenslabSample[] {
-    const session = this.getSessionById(sessionId);
-    if (!session) return [];
-    return this.getSamplesByIds(session.sampleIds || []);
+    return this.getSamples().filter(s => s.sessionId === sessionId);
   }
 
   upsertSample(sample: SenslabSample): void {
@@ -113,7 +109,6 @@ export class SenslabStorageService {
 
     session.sampleIds = [...(session.sampleIds || []), sample.id];
     session.updatedAt = nowIso();
-
     this.upsertSample(sample);
     this.upsertSession(session);
 
@@ -140,12 +135,18 @@ export class SenslabStorageService {
     return safeParse<SenslabResponse[]>(localStorage.getItem(LS_RESPONSES), []);
   }
 
+  getResponsesForSession(sessionId: string): SenslabResponse[] {
+    return this.getResponses().filter(r => r.sessionId === sessionId);
+  }
+
   getResponsesForSample(sampleId: string): SenslabResponse[] {
     return this.getResponses().filter(r => r.sampleId === sampleId);
   }
 
   getResponseForPanelist(sampleId: string, panelistId: string): SenslabResponse | null {
-    return this.getResponses().find(r => r.sampleId === sampleId && r.panelistId === panelistId) || null;
+    const pid = (panelistId || '').trim();
+    if (!pid) return null;
+    return this.getResponses().find(r => r.sampleId === sampleId && r.panelistId === pid) || null;
   }
 
   upsertResponse(resp: SenslabResponse): void {
@@ -156,7 +157,7 @@ export class SenslabStorageService {
     localStorage.setItem(LS_RESPONSES, JSON.stringify(all));
   }
 
-  // ───────────────── Invite Tokens ─────────────────
+  // ───────────────── Invite Tokens (one-time) ─────────────────
   getTokens(): SenslabInviteToken[] {
     return safeParse<SenslabInviteToken[]>(localStorage.getItem(LS_TOKENS), []);
   }
@@ -167,6 +168,7 @@ export class SenslabStorageService {
       token: makeToken(28),
       sessionId,
       createdAt: t,
+      createdBy: undefined,
       expiresAt: null,
       usedAt: null
     };
@@ -176,15 +178,39 @@ export class SenslabStorageService {
     return tokenObj;
   }
 
+  private isTokenExpired(t: SenslabInviteToken): boolean {
+    if (!t.expiresAt) return false;
+    const exp = Date.parse(t.expiresAt);
+    if (Number.isNaN(exp)) return false;
+    return exp < Date.now();
+  }
+
   resolveToken(token: string): SenslabInviteToken | null {
+    const tok = (token || '').trim();
+    if (!tok) return null;
+
     const all = this.getTokens();
-    return all.find(t => t.token === token) || null;
+    const found = all.find(t => t.token === tok) || null;
+    if (!found) return null;
+
+    // one-time semantics:
+    if (found.usedAt) return null;
+    if (this.isTokenExpired(found)) return null;
+
+    return found;
   }
 
   markTokenUsed(token: string): void {
+    const tok = (token || '').trim();
+    if (!tok) return;
+
     const all = this.getTokens();
-    const idx = all.findIndex(t => t.token === token);
+    const idx = all.findIndex(t => t.token === tok);
     if (idx < 0) return;
+
+    // idempotent
+    if (all[idx].usedAt) return;
+
     all[idx] = { ...all[idx], usedAt: nowIso() };
     localStorage.setItem(LS_TOKENS, JSON.stringify(all));
   }

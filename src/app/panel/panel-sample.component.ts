@@ -38,6 +38,7 @@ import { makeId, nowIso } from '../shared/id.util';
       </div>
 
       <button type="button" (click)="submit()" [disabled]="session.status !== 'ready'">Submit</button>
+      <div class="muted" style="margin-top:8px" *ngIf="hint">{{ hint }}</div>
     </div>
 
     <div class="card" *ngIf="sample.methodCore.method !== 'profile'">
@@ -69,6 +70,7 @@ export class PanelSampleComponent implements OnInit {
 
   panelistId = '';
   panelistName = '';
+  hint = '';
 
   profileItems: { id: string; name: string; description?: string }[] = [];
   scores: Record<string, number> = {};
@@ -89,6 +91,15 @@ export class PanelSampleComponent implements OnInit {
     this.panelistId = st.panelistId || '';
     this.panelistName = st.panelistName || '';
 
+    if (!this.panelistId) {
+      try {
+        const raw = sessionStorage.getItem(`senslab_panelist_${this.sessionId}`);
+        const p = raw ? JSON.parse(raw) : null;
+        this.panelistId = p?.panelistId || '';
+        this.panelistName = p?.panelistName || '';
+      } catch {}
+    }
+
     this.reload();
   }
 
@@ -96,19 +107,22 @@ export class PanelSampleComponent implements OnInit {
     this.session = this.store.getSessionById(this.sessionId);
     this.sample = this.store.getSampleById(this.sampleId);
 
+    if (!this.panelistId) {
+      this.hint = 'Missing panelist ID. Please re-join the session.';
+      return;
+    }
+
     if (this.sample?.methodCore?.method === 'profile') {
       const snap = this.sample.methodCore.config.snapshot || [];
       this.profileItems = snap.length
         ? snap
         : (this.sample.methodCore.config.descriptorLeafIds || []).map((id: string) => ({ id, name: id }));
 
-      // init scores default 0
       const ids = this.profileItems.map(x => x.id);
       const next: Record<string, number> = {};
       for (const id of ids) next[id] = Number.isFinite(this.scores[id]) ? this.scores[id] : 0;
       this.scores = next;
 
-      // load existing response (if any)
       const existing = this.store.getResponseForPanelist(this.sampleId, this.panelistId);
       if (existing && existing.method === 'profile') {
         this.scores = { ...next, ...(existing.methodCoreAnswer?.intensities || {}) };
@@ -118,11 +132,15 @@ export class PanelSampleComponent implements OnInit {
   }
 
   submit(): void {
+    this.hint = '';
+
+    if (!this.panelistId) {
+      this.hint = 'Missing panelist ID. Please re-join.';
+      return;
+    }
     if (!this.session || this.session.status !== 'ready') return;
     if (!this.sample || this.sample.methodCore.method !== 'profile') return;
-    if (!this.panelistId) return;
 
-    // merge/update existing response for this panelist+sample
     const existing = this.store.getResponseForPanelist(this.sampleId, this.panelistId);
 
     const resp: SenslabResponse = {
