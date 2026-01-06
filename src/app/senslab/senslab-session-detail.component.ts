@@ -1,7 +1,11 @@
+// src/app/senslab/senslab-session-detail.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { SenslabStorageService } from './senslab-storage.service';
+
+import type { SenslabSession } from './models/senslab-session.model';
+import type { SenslabSample } from './models/senslab-sample.model';
 
 @Component({
   selector: 'app-senslab-session-detail',
@@ -44,7 +48,7 @@ import { SenslabStorageService } from './senslab-storage.service';
 
       <div class="samples">
         <a class="srow" *ngFor="let smp of samples"
-           [routerLink]="['/senslab/sessions', session.id, 'samples', smp.id]">
+           [routerLink]="['/senslab','sessions', session.id, 'samples', smp.id]">
           <div class="stitle">{{ smp.label }}</div>
           <div class="smeta">
             Method: <b>{{ smp.methodCore.method }}</b>
@@ -72,8 +76,8 @@ import { SenslabStorageService } from './senslab-storage.service';
 })
 export class SenslabSessionDetailComponent implements OnInit {
   sessionId = '';
-  session: any = null;
-  samples: any[] = [];
+  session: SenslabSession | null = null;
+  samples: SenslabSample[] = [];
   inviteUrl: string | null = null;
 
   constructor(
@@ -83,7 +87,11 @@ export class SenslabSessionDetailComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.sessionId = this.route.snapshot.paramMap.get('sessionId') || '';
+    // supports both route param names ('id' or legacy 'sessionId')
+    this.sessionId =
+      this.route.snapshot.paramMap.get('id') ||
+      this.route.snapshot.paramMap.get('sessionId') ||
+      '';
     this.reload();
   }
 
@@ -99,7 +107,7 @@ export class SenslabSessionDetailComponent implements OnInit {
 
   addProfile(): void {
     const smp = this.store.createProfileSample(this.sessionId, 'Product Profile');
-    this.router.navigate(['/senslab/sessions', this.sessionId, 'samples', smp.id]);
+    this.router.navigate(['/senslab','sessions', this.sessionId, 'samples', smp.id]);
   }
 
   createToken(): void {

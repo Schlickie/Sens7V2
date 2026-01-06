@@ -1,3 +1,4 @@
+// src/app/senslab/senslab-storage.service.ts
 import { Injectable } from '@angular/core';
 import { safeParse } from '../shared/storage.util';
 import { makeId, makeShortCode, makeToken, nowIso } from '../shared/id.util';
@@ -15,7 +16,6 @@ const LS_TOKENS = 'senslab_inviteTokens';
 
 @Injectable({ providedIn: 'root' })
 export class SenslabStorageService {
-
   // ───────────────── Sessions ─────────────────
   getSessions(): SenslabSession[] {
     return safeParse<SenslabSession[]>(localStorage.getItem(LS_SESSIONS), []);
@@ -67,9 +67,18 @@ export class SenslabStorageService {
     return this.getSamples().find(x => x.id === id) || null;
   }
 
-  getSamplesForSession(sessionId: string): SenslabSample[] {
+  /** returns samples in the SAME order as ids[] */
+  getSamplesByIds(ids: string[]): SenslabSample[] {
     const all = this.getSamples();
-    return all.filter(s => s.sessionId === sessionId);
+    const byId = new Map(all.map(s => [s.id, s] as const));
+    return (ids || []).map(id => byId.get(id)).filter(Boolean) as SenslabSample[];
+  }
+
+  /** source of truth: session.sampleIds (order + membership) */
+  getSamplesForSession(sessionId: string): SenslabSample[] {
+    const session = this.getSessionById(sessionId);
+    if (!session) return [];
+    return this.getSamplesByIds(session.sampleIds || []);
   }
 
   upsertSample(sample: SenslabSample): void {
@@ -104,13 +113,18 @@ export class SenslabStorageService {
 
     session.sampleIds = [...(session.sampleIds || []), sample.id];
     session.updatedAt = nowIso();
+
     this.upsertSample(sample);
     this.upsertSession(session);
 
     return sample;
   }
 
-  updateProfileSelection(sampleId: string, leafIds: string[], snapshot?: {id:string; name:string; description?:string}[]): void {
+  updateProfileSelection(
+    sampleId: string,
+    leafIds: string[],
+    snapshot?: { id: string; name: string; description?: string }[]
+  ): void {
     const sample = this.getSampleById(sampleId);
     if (!sample || sample.methodCore.method !== 'profile') return;
 
