@@ -40,7 +40,10 @@ import type { SenslabResponse } from './models/senslab-response.model';
     <div class="card">
       <div class="rowline">
         <div style="font-weight:700">Samples</div>
-        <button type="button" (click)="addProfile()">+ Add Profile sample</button>
+        <div class="btnrow">
+          <button type="button" (click)="addProfile()">+ Add Profile sample</button>
+          <button type="button" (click)="addTriangle()">+ Add Triangle sample</button>
+        </div>
       </div>
 
       <div class="samples">
@@ -68,6 +71,7 @@ import type { SenslabResponse } from './models/senslab-response.model';
                 <div class="rMain">
                   <b>{{ r.panelistName || r.panelistId }}</b>
                   <span class="muted">({{ r.panelistId }})</span>
+                  <span class="muted" *ngIf="r.seatNumber"> · Seat <b>{{ r.seatNumber }}</b></span>
                 </div>
                 <div class="rMeta muted">
                   {{ r.submittedAt }}
@@ -89,7 +93,8 @@ import type { SenslabResponse } from './models/senslab-response.model';
     .actions{ display:flex; gap:8px; }
     .card{ margin-top:12px; padding:12px; border:1px solid #ddd; border-radius:12px; }
     .muted{ opacity:.7; font-size:13px; }
-    .rowline{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .rowline{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .btnrow{ display:flex; gap:8px; flex-wrap:wrap; }
     .samples{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
 
     .srow{ border:1px solid #eee; border-radius:12px; overflow:hidden; }
@@ -130,11 +135,8 @@ export class SenslabSessionDetailComponent implements OnInit {
 
     const all = this.store.getResponsesForSession(this.sessionId);
     const map: Record<string, SenslabResponse[]> = {};
-    for (const r of all) {
-      (map[r.sampleId] ||= []).push(r);
-    }
+    for (const r of all) (map[r.sampleId] ||= []).push(r);
 
-    // newest first per sample
     for (const sid of Object.keys(map)) {
       map[sid] = [...map[sid]].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
     }
@@ -149,6 +151,11 @@ export class SenslabSessionDetailComponent implements OnInit {
 
   addProfile(): void {
     const smp = this.store.createProfileSample(this.sessionId, 'Product Profile');
+    this.router.navigate(['/senslab/sessions', this.sessionId, 'samples', smp.id]);
+  }
+
+  addTriangle(): void {
+    const smp = this.store.createTriangleSample(this.sessionId, 'Triangle', 12);
     this.router.navigate(['/senslab/sessions', this.sessionId, 'samples', smp.id]);
   }
 

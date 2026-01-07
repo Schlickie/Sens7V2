@@ -12,6 +12,7 @@ import { SenslabStorageService } from '../senslab/senslab-storage.service';
     <h2>Session Queue</h2>
     <div class="muted">
       Code: <b>{{ session.sessionCode }}</b> · Status: <b>{{ session.status }}</b>
+      <span *ngIf="seatNumber" class="muted"> · Seat <b>{{ seatNumber }}</b></span>
     </div>
 
     <div *ngIf="session.status !== 'ready'" class="warn">
@@ -49,6 +50,7 @@ export class PanelQueueComponent implements OnInit {
 
   panelistId = '';
   panelistName = '';
+  seatNumber: number | null = null;
 
   samples: any[] = [];
   doneMap: Record<string, boolean> = {};
@@ -63,19 +65,19 @@ export class PanelQueueComponent implements OnInit {
     this.sessionId = this.route.snapshot.paramMap.get('sessionId') || '';
     this.session = this.store.getSessionById(this.sessionId);
 
-    // read from navigation state first
     const nav = this.router.getCurrentNavigation();
     const st: any = nav?.extras?.state || history.state || {};
     this.panelistId = st.panelistId || '';
     this.panelistName = st.panelistName || '';
+    this.seatNumber = (st.seatNumber ?? null);
 
-    // fallback to sessionStorage (survive reload)
     if (!this.panelistId) {
       try {
         const raw = sessionStorage.getItem(`senslab_panelist_${this.sessionId}`);
         const p = raw ? JSON.parse(raw) : null;
         this.panelistId = p?.panelistId || '';
         this.panelistName = p?.panelistName || '';
+        this.seatNumber = (p?.seatNumber ?? null);
       } catch {}
     }
 
@@ -103,7 +105,7 @@ export class PanelQueueComponent implements OnInit {
 
     this.router.navigate(
       ['/panel/session', this.sessionId, 'sample', sampleId],
-      { state: { panelistId: this.panelistId, panelistName: this.panelistName } }
+      { state: { panelistId: this.panelistId, panelistName: this.panelistName, seatNumber: this.seatNumber } }
     );
   }
 }

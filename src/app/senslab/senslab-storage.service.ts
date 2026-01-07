@@ -115,6 +115,116 @@ export class SenslabStorageService {
     return sample;
   }
 
+    createTriangleSample(sessionId: string, label?: string, seatCount: number = 1): SenslabSample {
+    const session = this.getSessionById(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    const t = nowIso();
+    const sample: SenslabSample = {
+      id: makeId('senslab_sample'),
+      sessionId,
+      label: (label || '').trim() || 'Triangle',
+      createdAt: t,
+      updatedAt: t,
+      methodCore: {
+        method: 'triangle',
+        config: {
+          seatCount: Math.max(1, Math.floor(seatCount || 1))
+        }
+      },
+      addons: { schema: { widgets: [] } }
+    };
+
+    session.sampleIds = [...(session.sampleIds || []), sample.id];
+    session.updatedAt = nowIso();
+    this.upsertSample(sample);
+    this.upsertSession(session);
+
+    return sample;
+  }
+
+  updateTriangleSeatCount(sampleId: string, seatCount: number): void {
+    const sample = this.getSampleById(sampleId);
+    if (!sample || sample.methodCore.method !== 'triangle') return;
+
+    sample.methodCore.config.seatCount = Math.max(1, Math.floor(seatCount || 1));
+    sample.updatedAt = nowIso();
+    this.upsertSample(sample);
+  }
+
+    // ───────────────── Triangle Randomization ─────────────────
+  private makeTripletCodes(): [string, string, string] {
+    // 3x 3-digit code, unique within triplet
+    const set = new Set<string>();
+    while (set.size < 3) {
+      set.add(String(Math.floor(100 + Math.random() * 900)));
+    }
+    return Array.from(set) as [string, string, string];
+  }
+
+  generateTriangleTriplets(sampleId: string): void {
+    const sample = this.getSampleById(sampleId);
+    if (!sample || sample.methodCore.method !== 'triangle') return;
+
+    const seatCount = Math.max(1, Math.floor(Number(sample.methodCore.config.seatCount || 1)));
+    const map: Record<string, { codes: [string, string, string]; oddIndex: number }> = {};
+
+    for (let seat = 1; seat <= seatCount; seat++) {
+      const codes = this.makeTripletCodes();
+      const oddIndex = Math.floor(Math.random() * 3); // 0..2
+      map[String(seat)] = { codes, oddIndex };
+    }
+
+    sample.methodCore.config.tripletsBySeat = map;
+    sample.methodCore.config.generatedAt = nowIso();
+    sample.updatedAt = nowIso();
+    this.upsertSample(sample);
+  }
+
+  getTriangleTriplet(sampleId: string, seatNumber: number | null | undefined):
+    { codes: [string, string, string]; oddIndex: number } | null {
+
+    const sample = this.getSampleById(sampleId);
+    if (!sample || sample.methodCore.method !== 'triangle') return null;
+
+    const seatCount = Math.max(1, Math.floor(Number(sample.methodCore.config.seatCount || 1)));
+    const seat = Math.max(1, Math.min(seatCount, Math.floor(Number(seatNumber || 1))));
+
+    const map = sample.methodCore.config.tripletsBySeat || {};
+    return map[String(seat)] || null;
+  }
+
+  isTriangleConfigured(sampleId: string): boolean {
+    const sample = this.getSampleById(sampleId);
+    if (!sample || sample.methodCore.method !== 'triangle') return false;
+
+    const seatCount = Math.max(1, Math.floor(Number(sample.methodCore.config.seatCount || 1)));
+    const map = sample.methodCore.config.tripletsBySeat || {};
+    // configured if at least seat 1 exists; ideally all seats exist
+    if (!map['1']) return false;
+    for (let s = 1; s <= seatCount; s++) {
+      if (!map[String(s)]) return false;
+    }
+    return true;
+  }
+
+
+  getSeatCountForSession(sessionId: string): number {
+    // Seat-Abfrage nur, wenn irgendein Sample seatCount > 1 hat
+    const samples = this.getSamplesForSession(sessionId);
+
+    let maxSeat = 1;
+    for (const s of samples) {
+      const m = s?.methodCore?.method;
+      if (m === 'triangle' || m === 'threshold') {
+        const sc = Number((s as any).methodCore?.config?.seatCount);
+        if (Number.isFinite(sc) && sc > maxSeat) maxSeat = Math.floor(sc);
+      }
+    }
+    return Math.max(1, maxSeat);
+  }
+
+
   updateProfileSelection(
     sampleId: string,
     leafIds: string[],

@@ -8,9 +8,14 @@ export interface TriangleCore extends MethodCoreBase {
   method: 'triangle';
   config: {
     seatCount?: number;
-    // v1: placeholder – randomization setups kommen später
+
+    // v1: Triplets je Seat (Seat ist 1..seatCount)
+    // "codes" sind die drei Labels, "oddIndex" (0..2) ist der abweichende.
+    tripletsBySeat?: Record<string, { codes: [string, string, string]; oddIndex: number }>;
+    generatedAt?: string; // ISO
   };
 }
+
 
 export interface ProfileCore extends MethodCoreBase {
   method: 'profile';

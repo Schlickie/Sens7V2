@@ -28,6 +28,11 @@ import { SenslabStorageService } from '../senslab/senslab-storage.service';
         <input [(ngModel)]="panelistName" placeholder="e.g. Stefan" />
       </div>
 
+      <div class="row" *ngIf="seatRequired">
+        <label>Seat number (1..{{ seatCount }})</label>
+        <input type="number" min="1" [max]="seatCount" [(ngModel)]="seatNumber" />
+      </div>
+
       <button type="button" (click)="joinManual()">Join</button>
 
       <div class="muted" style="margin-top:8px" *ngIf="hint">{{ hint }}</div>
@@ -49,6 +54,10 @@ export class PanelJoinComponent implements OnInit {
   panelistId = '';
   panelistName = '';
   hint = '';
+
+  seatCount = 1;
+  seatRequired = false;
+  seatNumber: number | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -73,6 +82,10 @@ export class PanelJoinComponent implements OnInit {
       }
 
       this.sessionCode = s.sessionCode;
+
+      this.seatCount = this.store.getSeatCountForSession(s.id);
+      this.seatRequired = this.seatCount > 1;
+
       this.hint = 'Token recognized. Please enter your panelist ID and join.';
     }
   }
@@ -91,7 +104,19 @@ export class PanelJoinComponent implements OnInit {
       return;
     }
 
-    // if token was used to get here: validate again, then mark used after successful join
+    this.seatCount = this.store.getSeatCountForSession(session.id);
+    this.seatRequired = this.seatCount > 1;
+
+    let seat: number | null = null;
+    if (this.seatRequired) {
+      const n = Number(this.seatNumber);
+      if (!Number.isFinite(n) || n < 1 || n > this.seatCount) {
+        this.hint = `Please enter a seat number between 1 and ${this.seatCount}.`;
+        return;
+      }
+      seat = Math.floor(n);
+    }
+
     if (this.token) {
       const t = this.store.resolveToken(this.token);
       if (!t) {
@@ -103,14 +128,16 @@ export class PanelJoinComponent implements OnInit {
 
     const display = (this.panelistName || '').trim() || pid;
 
-    // Persist panelist info to survive reloads
     try {
-      sessionStorage.setItem(`senslab_panelist_${session.id}`, JSON.stringify({ panelistId: pid, panelistName: display }));
+      sessionStorage.setItem(
+        `senslab_panelist_${session.id}`,
+        JSON.stringify({ panelistId: pid, panelistName: display, seatNumber: seat })
+      );
     } catch {}
 
     this.router.navigate(
       ['/panel/session', session.id],
-      { state: { panelistId: pid, panelistName: display } }
+      { state: { panelistId: pid, panelistName: display, seatNumber: seat } }
     );
   }
 }
